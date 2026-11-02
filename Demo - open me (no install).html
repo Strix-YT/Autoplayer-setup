@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autoplayer Control</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #161b21; --panel-2: #1c232b; --line: #2a333d;
+    --text: #e6eaef; --muted: #8b97a5; --accent: #4da3ff; --accent-ink: #06121f;
+    --s-offline: #5b6672; --s-online: #8a94a0; --s-install: #b48cff; --s-boot: #d9a441;
+    --s-fe: #5fb3c9; --s-mm: #e0c341; --s-ingame: #6fa8ff; --s-deployed: #4fd19a;
+    --s-ap: #2ee08a; --s-error: #ff5d5d; --s-unknown: #444d57;
+    --radius: 8px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f3f5f8; --panel: #ffffff; --panel-2: #f0f3f7; --line: #d9dfe6;
+      --text: #141a21; --muted: #5d6875; --accent: #1f6fd1; --accent-ink: #ffffff;
+      --s-online: #6d7782; --s-offline: #a3acb6; --s-unknown: #c3cad2;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, select, input { font: inherit; color: inherit; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .badge.demo { color: var(--s-boot); border-color: var(--s-boot); }
+  .conn { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--s-offline); }
+  .dot.on { background: var(--s-ap); box-shadow: 0 0 6px var(--s-ap); }
+  .summary { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; cursor: pointer; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .chip b { font-variant-numeric: tabular-nums; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .panel h2 .right { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .bar:last-child { border-bottom: 0; }
+  .bar .label { color: var(--muted); font-size: 12px; min-width: 64px; }
+  .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .btn.danger:hover:not(:disabled) { border-color: var(--s-error); color: var(--s-error); }
+  select, input[type=text] { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+  input[type=text] { width: 180px; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+  .selcount { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 14px; }
+  .tile { position: relative; background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--st, var(--s-unknown)); border-radius: 6px; padding: 8px 10px; cursor: pointer; user-select: none; min-height: 84px; }
+  .tile.sel { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .tile .name { font-weight: 600; font-family: var(--mono); font-size: 13px; display: flex; justify-content: space-between; gap: 6px; }
+  .tile .plat { font-size: 10px; color: var(--muted); font-weight: 500; }
+  .tile .state { font-size: 12px; color: var(--st); font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+  .tile .meta { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .err { font-size: 11px; color: var(--s-error); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .spin { width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .run { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .run .title { font-weight: 600; }
+  .run .big { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .progress { height: 6px; background: var(--panel-2); border-radius: 99px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--s-ap); transition: width .3s; }
+  .fail { font-size: 12px; font-family: var(--mono); padding: 6px 8px; background: color-mix(in srgb, var(--s-error) 10%, transparent); border-left: 3px solid var(--s-error); border-radius: 4px; }
+  .fail span { color: var(--muted); font-family: system-ui, sans-serif; }
+  .empty { color: var(--muted); padding: 14px; font-size: 13px; }
+  .log { font-family: var(--mono); font-size: 11.5px; max-height: 420px; overflow: auto; padding: 8px 14px; }
+  .log div { padding: 2px 0; border-bottom: 1px dashed var(--line); color: var(--muted); }
+  .log div b { color: var(--text); font-weight: 500; }
+  .log div.bad b { color: var(--s-error); }
+  .wfs { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; }
+  .wfs .btn { text-align: left; white-space: normal; }
+  .wfs .btn small { display: block; color: var(--muted); font-size: 11px; }
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 10px 16px; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.3); display: none; z-index: 20; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Autoplayer Control</h1>
+  <span id="mode" class="badge">…</span>
+  <span class="conn"><span id="connDot" class="dot"></span><span id="connText">connecting</span></span>
+  <div id="summary" class="summary"></div>
+</header>
+
+<main>
+  <section style="display:flex;flex-direction:column;gap:16px;min-width:0">
+    <div class="panel">
+      <div class="bar">
+        <span class="label">Select</span>
+        <button class="btn" data-sel="all">All</button>
+        <button class="btn" data-sel="none">None</button>
+        <button class="btn" data-sel="invert">Invert</button>
+        <button class="btn" data-sel="errors">Errors</button>
+        <select id="groupSelect"><option value="">Group…</option></select>
+        <span class="sep"></span>
+        <input id="newGroup" type="text" placeholder="Save selection as group">
+        <button class="btn" id="saveGroup">Save</button>
+        <span style="margin-left:auto"><span id="selCount" class="selcount">0</span> selected</span>
+      </div>
+      <div class="bar">
+        <span class="label">Device</span>
+        <select id="buildSelect"></select>
+        <button class="btn" data-act="InstallBuild">Install build</button>
+        <input id="launchArgs" type="text" placeholder="Launch args (default from config)">
+        <button class="btn primary" data-act="Launch">Launch</button>
+        <button class="btn" data-act="Restart">Restart</button>
+        <button class="btn danger" data-act="Stop">Stop game</button>
+        <button class="btn danger" data-act="Reboot">Reboot</button>
+      </div>
+      <div class="bar">
+        <span class="label">Game</span>
+        <select id="expSelect"></select>
+        <button class="btn primary" data-act="Join">Join</button>
+        <button class="btn" data-act="SwitchExperience">Switch</button>
+        <button class="btn" data-act="Leave">Leave</button>
+        <span class="sep"></span>
+        <input id="team" type="text" placeholder="Team (optional)" style="width:120px">
+        <button class="btn" data-act="Deploy">Deploy</button>
+        <span class="sep"></span>
+        <select id="profileSelect"></select>
+        <button class="btn primary" data-act="StartAutoplayer">Start AP</button>
+        <button class="btn" data-act="StopAutoplayer">Stop AP</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Autoplayers <span class="right"><input id="filter" type="text" placeholder="Filter by name / state / group" style="width:220px"></span></h2>
+      <div id="grid" class="grid"></div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <h2>Workflows <span class="right" style="color:var(--muted);font-size:11px">runs on selection</span></h2>
+      <div id="workflows" class="wfs"></div>
+    </div>
+    <div class="panel">
+      <h2>Current run</h2>
+      <div id="run"><div class="empty">No workflow run yet. Select clients and pick a workflow.</div></div>
+    </div>
+    <div class="panel">
+      <h2>Activity</h2>
+      <div id="log" class="log"></div>
+    </div>
+  </aside>
+</main>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============================================================
+ * Autoplayer Control dashboard.
+ * Talks to the C# server (/api). If the API is unreachable (e.g. the
+ * page is opened as a file) it falls back to an in-browser demo fleet.
+ * ============================================================ */
+const STATES = ["Unknown","Offline","Online","Installing","Booting","InFrontend","Matchmaking","InGame","Deployed","Autoplaying","Error"];
+const STATE_VAR = { Unknown:"--s-unknown", Offline:"--s-offline", Online:"--s-online", Installing:"--s-install", Booting:"--s-boot",
+  InFrontend:"--s-fe", Matchmaking:"--s-mm", InGame:"--s-ingame", Deployed:"--s-deployed", Autoplaying:"--s-ap", Error:"--s-error" };
+const STATE_LABEL = { InFrontend:"In front end", InGame:"In game", Autoplaying:"Autoplaying" };
+const $ = s => document.querySelector(s);
+
+const ui = { clients: new Map(), selected: new Set(), lastClicked: null, meta: null, run: null };
+
+/* ---------------- live API ---------------- */
+const liveApi = {
+  async meta() { return j(await fetch("/api/meta")); },
+  async clients() { return j(await fetch("/api/clients")); },
+  async builds() { return j(await fetch("/api/builds")); },
+  async command(request, target) { return j(await post("/api/commands", { request, target })); },
+  async runWorkflow(name, target) { return j(await post(`/api/workflows/${encodeURIComponent(name)}/run`, target)); },
+  async retry(runId) { return j(await post(`/api/workflows/runs/${runId}/retry`, {})); },
+  async saveGroup(name, clientIds) { return j(await fetch(`/api/groups/${encodeURIComponent(name)}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ clientIds }) })); },
+  subscribe(onEvent, onConn) {
+    const es = new EventSource("/api/events");
+    es.onopen = () => onConn(true);
+    es.onerror = () => onConn(false);
+    es.onmessage = m => onEvent(JSON.parse(m.data));
+  }
+};
+function post(url, body) { return fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) }); }
+async function j(r) { if (!r.ok) { const t = await r.text(); throw new Error(t || r.statusText); } return r.status === 204 ? null : r.json(); }
+
+/* ---------------- demo API (in-browser simulation) ---------------- */
+function makeDemoApi() {
+  const listeners = [];
+  const emit = (kind, clientId, message, data) => listeners.forEach(l => l({ at: new Date().toISOString(), kind, clientId, message, data }));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const groups = { "Bank A": [], "Bank B": [] };
+  const fleet = new Map();
+  for (let i = 1; i <= 32; i++) {
+    const id = "AP-" + String(i).padStart(3, "0");
+    const g = i <= 16 ? "Bank A" : "Bank B"; groups[g].push(id);
+    fleet.set(id, { id, name: id, platform: i % 2 ? "Xbox" : "PS5", address: `10.0.${(i-1)>>4}.${(i-1)%16+10}`, groups: [g],
+      state: "Online", busy: false, experience: null, buildVersion: "CL1234567", profile: null, lastMessage: null });
+  }
+  const meta = {
+    mode: "Demo",
+    experiences: [{id:"conquest",name:"Conquest"},{id:"breakthrough",name:"Breakthrough"},{id:"rush",name:"Rush"},{id:"tdm",name:"Team Deathmatch"}],
+    profiles: ["Standard","Aggressive","Passive","Objective"],
+    workflows: [
+      { name:"Prepare Conquest", description:"Launch → Join Conquest → Deploy → Start Autoplayer",
+        steps:[{action:"Launch"},{action:"Join",experienceId:"conquest"},{action:"Deploy"},{action:"StartAutoplayer",profile:"Standard"}] },
+      { name:"Swap to Breakthrough", description:"Leave → Join Breakthrough → Deploy → Start Autoplayer",
+        steps:[{action:"SwitchExperience",experienceId:"breakthrough"},{action:"Deploy"},{action:"StartAutoplayer",profile:"Standard"}] },
+      { name:"End of playtest", description:"Stop autoplay and close the game so no MTBF data is generated in FE", steps:[{action:"Stop"}] }
+    ],
+    groups
+  };
+  const set = (c, patch) => { Object.assign(c, patch); emit("client", c.id, `${c.id}: ${c.state}`, { ...c }); };
+  // `real` = what the device is actually doing underneath the Error flag (e.g. still in FE after a failed join).
+  const fail = (c, msg, real) => { c.real = real || c.state; set(c, { state: "Error", lastMessage: msg }); return { clientId: c.id, success: false, message: msg, finalState: "Error" }; };
+  const ok = c => { set(c, { lastMessage: null }); return { clientId: c.id, success: true, finalState: c.state }; };
+  const gameUp = c => !["Offline","Online","Installing","Unknown"].includes(c.state);
+  const label = r => ({ InstallBuild:`Install build ${r.buildId}`, Join:`Join ${r.experienceId}`, SwitchExperience:`SwitchExperience ${r.experienceId}`,
+    StartAutoplayer:`Start Autoplayer (${r.profile||"Standard"})` })[r.action] || r.action;
+
+  async function one(r, c) {
+    if (c.busy) return { clientId: c.id, success: false, message: "Client is busy", finalState: c.state };
+    c.busy = true; emit("client", c.id, "", { ...c });
+    if (c.state === "Error" && c.real) c.state = c.real;
+    try {
+      switch (r.action) {
+        case "InstallBuild": set(c,{state:"Installing"}); await wait(rnd(2500,6000));
+          if (Math.random() < .06) return fail(c, "Package install failed: not enough free space", "Online"); set(c,{state:"Online",buildVersion:"CL1234567",experience:null}); return ok(c);
+        case "Launch": set(c,{state:"Booting"}); await wait(rnd(2500,6000)); set(c,{state:"InFrontend"}); return ok(c);
+        case "Restart": set(c,{state:"Booting",experience:null,profile:null}); await wait(rnd(3000,6000)); set(c,{state:"InFrontend"}); return ok(c);
+        case "Stop": await wait(rnd(200,800)); set(c,{state:"Online",experience:null,profile:null}); return ok(c);
+        case "Reboot": set(c,{state:"Offline",experience:null,profile:null}); setTimeout(()=>{ c.busy=false; set(c,{state:"Online"}); }, rnd(8000,12000)); return ok(c);
+        case "Join": case "SwitchExperience":
+          if (!gameUp(c)) return fail(c, `Join ${r.experienceId}: Game is not running (state ${c.state})`);
+          if (r.action === "SwitchExperience" && ["Matchmaking","InGame","Deployed","Autoplaying"].includes(c.state)) {
+            set(c,{state:"Matchmaking",experience:null,profile:null}); await wait(rnd(1000,2500)); set(c,{state:"InFrontend"}); }
+          if (c.state !== "InFrontend") return fail(c, `Can't join from ${c.state}`);
+          set(c,{state:"Matchmaking",experience:r.experienceId}); await wait(rnd(2500,7000));
+          if (Math.random() < .06) return fail(c, `Join ${r.experienceId}: Failed to join server (matchmaking timed out)`, "InFrontend");
+          set(c,{state:"InGame"}); return ok(c);
+        case "Leave": if (!gameUp(c)) return fail(c,"Leave: Game is not running");
+          set(c,{state:"Matchmaking",experience:null,profile:null}); await wait(rnd(1000,2500)); set(c,{state:"InFrontend"}); return ok(c);
+        case "Deploy": if (!["InGame","Deployed"].includes(c.state)) return fail(c, `Deploy: Can't deploy from ${c.state}`);
+          await wait(rnd(800,2500)); set(c,{state:"Deployed"}); return ok(c);
+        case "StartAutoplayer": if (c.state !== "Deployed") return fail(c, `Start Autoplayer: Can't start from ${c.state}`);
+          await wait(rnd(200,600)); set(c,{state:"Autoplaying",profile:r.profile||"Standard"}); return ok(c);
+        case "StopAutoplayer": await wait(200); if (c.state==="Autoplaying") set(c,{state:"Deployed"}); return ok(c);
+      }
+      return fail(c, "Unsupported");
+    } finally { if (r.action !== "Reboot") { c.busy = false; emit("client", c.id, "", { ...c }); } }
+  }
+  async function bulk(r, ids) {
+    emit("log", null, `▶ ${label(r)} → ${ids.length} client(s)`);
+    const results = await Promise.all(ids.map(id => one(r, fleet.get(id))));
+    const res = { command: label(r), requested: ids.length, succeeded: results.filter(x=>x.success).length, results };
+    emit("command", null, `■ ${label(r)}: ${res.succeeded}/${res.requested} succeeded`, res);
+    return res;
+  }
+  const resolve = t => [...new Set([...(t.all ? fleet.keys() : []), ...(t.clientIds||[]), ...(t.groups||[]).flatMap(g => groups[g]||[])])].sort();
+  const runs = new Map();
+  function snap(run) {
+    const failed = [...run.progress.values()].filter(p => p.failedStep != null);
+    const total = run.wf.steps.length;
+    const ready = [...run.progress.values()].filter(p => p.failedStep == null && p.completedSteps >= total).length;
+    const s = { runId: run.id, workflow: run.wf.name, status: run.status, totalSteps: total, currentStep: run.step, currentStepName: run.stepName,
+      requested: run.progress.size, ready, failed };
+    s.summary = run.status === "Running" ? `Step ${run.step+1}/${total}: ${run.stepName} — ${s.requested - failed.length}/${s.requested} on track` : `${ready}/${s.requested} Ready`;
+    return s;
+  }
+  async function exec(run, items) {
+    const steps = run.wf.steps;
+    for (let i = Math.min(...items.map(x=>x.from)); i < steps.length; i++) {
+      const active = items.filter(x => x.from <= i && run.progress.get(x.id).failedStep == null).map(x=>x.id);
+      if (!active.length) continue;
+      run.step = i; run.stepName = label(steps[i]);
+      emit("workflow", null, `Step ${i+1}/${steps.length}: ${run.stepName} (${active.length} clients)`, snap(run));
+      const res = await bulk(steps[i], active);
+      for (const r of res.results) {
+        const p = run.progress.get(r.clientId);
+        if (r.success) p.completedSteps = i + 1; else Object.assign(p, { failedStep: i, failedStepName: run.stepName, error: r.message });
+      }
+    }
+    run.status = [...run.progress.values()].some(p => p.failedStep != null) ? "CompletedWithFailures" : "Completed";
+    emit("workflow", null, `Workflow '${run.wf.name}' finished: ${snap(run).summary}`, snap(run));
+  }
+  return {
+    async meta() { return meta; },
+    async clients() { return [...fleet.values()].map(c => ({...c})); },
+    async builds() { return { provider: "Demo", builds: [{ id: "qv-latest", version: "CL1234567", branch: "QV" }] }; },
+    command: (r, t) => bulk(r, resolve(t)),
+    async runWorkflow(name, t) {
+      const wf = meta.workflows.find(w => w.name === name); const ids = resolve(t);
+      const run = { id: Math.random().toString(16).slice(2,12), wf, status: "Running", step: 0, stepName: "",
+        progress: new Map(ids.map(id => [id, { clientId: id, completedSteps: 0, failedStep: null }])) };
+      runs.set(run.id, run); exec(run, ids.map(id => ({ id, from: 0 }))); return snap(run);
+    },
+    async retry(runId) {
+      const run = runs.get(runId); const failed = [...run.progress.values()].filter(p => p.failedStep != null);
+      const items = failed.map(p => ({ id: p.clientId, from: p.failedStep }));
+      failed.forEach(p => Object.assign(p, { failedStep: null, failedStepName: null, error: null }));
+      run.status = "Running"; exec(run, items); return snap(run);
+    },
+    async saveGroup(name, ids) {
+      groups[name] = [...ids];
+      for (const c of fleet.values()) { c.groups = c.groups.filter(g => g !== name); if (ids.includes(c.id)) c.groups.push(name); emit("client", c.id, "", {...c}); }
+      return groups;
+    },
+    subscribe(onEvent, onConn) { listeners.push(onEvent); onConn(true); }
+  };
+}
+
+/* ---------------- rendering ---------------- */
+function render() {
+  const f = $("#filter").value.trim().toLowerCase();
+  const grid = $("#grid");
+  const list = [...ui.clients.values()].sort((a,b) => a.name.localeCompare(b.name));
+  grid.innerHTML = "";
+  for (const c of list) {
+    if (f && !(`${c.name} ${c.state} ${(c.groups||[]).join(" ")} ${c.platform}`.toLowerCase().includes(f))) continue;
+    const t = document.createElement("div");
+    t.className = "tile" + (ui.selected.has(c.id) ? " sel" : "");
+    t.style.setProperty("--st", `var(${STATE_VAR[c.state] || "--s-unknown"})`);
+    t.dataset.id = c.id;
+    const meta = [c.experience, c.profile].filter(Boolean).join(" · ") || (c.groups||[]).join(", ");
+    t.innerHTML = `<div class="name">${esc(c.name)}<span class="plat">${esc(c.platform)}</span></div>
+      <div class="state">${c.busy ? '<span class="spin"></span>' : ""}${esc(STATE_LABEL[c.state] || c.state)}</div>
+      <div class="meta">${esc(meta)}</div>
+      ${c.state === "Error" && c.lastMessage ? `<div class="err" title="${esc(c.lastMessage)}">${esc(c.lastMessage)}</div>` : ""}`;
+    grid.appendChild(t);
+  }
+  renderSummary(); renderSelCount();
+}
+function renderSummary() {
+  const counts = {}; for (const c of ui.clients.values()) counts[c.state] = (counts[c.state]||0) + 1;
+  $("#summary").innerHTML = `<span class="chip" data-state="*"><b>${ui.clients.size}</b> total</span>` +
+    STATES.filter(s => counts[s]).map(s => `<span class="chip" data-state="${s}" title="Select all ${s}"><i style="background:var(${STATE_VAR[s]})"></i>${esc(STATE_LABEL[s]||s)} <b>${counts[s]}</b></span>`).join("");
+}
+function renderSelCount() {
+  $("#selCount").textContent = ui.selected.size;
+  document.querySelectorAll("[data-act]").forEach(b => b.disabled = ui.selected.size === 0);
+  document.querySelectorAll("[data-wf]").forEach(b => b.disabled = ui.selected.size === 0);
+}
+function renderRun() {
+  const r = ui.run, el = $("#run");
+  if (!r) return;
+  const done = r.status !== "Running";
+  const pct = done ? 100 : Math.round(100 * (r.currentStep) / Math.max(1, r.totalSteps));
+  const okPct = Math.round(100 * (done ? r.ready : r.requested - r.failed.length) / Math.max(1, r.requested));
+  el.innerHTML = `<div class="run">
+    <div class="title">${esc(r.workflow)} <span class="badge">${esc(r.status)}</span></div>
+    <div class="big">${esc(done ? `${r.ready}/${r.requested} Ready` : `${r.requested - r.failed.length}/${r.requested} on track`)}</div>
+    <div style="color:var(--muted);font-size:12px">${esc(done ? "" : `Step ${r.currentStep+1}/${r.totalSteps}: ${r.currentStepName||""}`)}</div>
+    <div class="progress"><div style="width:${done ? okPct : pct}%"></div></div>
+    ${r.failed.map(f => `<div class="fail"><b>${esc(f.clientId)}</b> — ${esc(f.error||"failed")}<br><span>at step: ${esc(f.failedStepName||"")}</span></div>`).join("")}
+    ${done && r.failed.length ? `<button class="btn primary" id="retryBtn">Retry failed clients (${r.failed.length})</button>` : ""}
+    ${r.failed.length ? `<button class="btn" id="selFailed">Select failed</button>` : ""}
+  </div>`;
+  $("#retryBtn")?.addEventListener("click", async () => { ui.run = await api.retry(r.runId); renderRun(); });
+  $("#selFailed")?.addEventListener("click", () => { ui.selected = new Set(r.failed.map(f => f.clientId)); render(); });
+}
+function log(evt) {
+  if (evt.kind === "client" || !evt.message) return;
+  const d = document.createElement("div");
+  const time = new Date(evt.at).toLocaleTimeString();
+  const bad = evt.kind === "command" && evt.data && evt.data.succeeded < evt.data.requested;
+  d.className = bad ? "bad" : "";
+  d.innerHTML = `${time} <b>${esc(evt.message)}</b>`;
+  const lg = $("#log"); lg.prepend(d); while (lg.children.length > 300) lg.lastChild.remove();
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 3500); }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[ch]); }
+let renderQueued = false;
+function scheduleRender() { if (!renderQueued) { renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); } }
+
+/* ---------------- interactions ---------------- */
+$("#grid").addEventListener("click", e => {
+  const t = e.target.closest(".tile"); if (!t) return;
+  const id = t.dataset.id;
+  if (e.shiftKey && ui.lastClicked) {
+    const ids = [...$("#grid").children].map(x => x.dataset.id);
+    const [a, b] = [ids.indexOf(ui.lastClicked), ids.indexOf(id)].sort((x,y) => x-y);
+    ids.slice(a, b + 1).forEach(x => ui.selected.add(x));
+  } else if (e.ctrlKey || e.metaKey) {
+    ui.selected.has(id) ? ui.selected.delete(id) : ui.selected.add(id);
+  } else {
+    ui.selected.has(id) && ui.selected.size === 1 ? ui.selected.clear() : (ui.selected = new Set([id]));
+  }
+  ui.lastClicked = id; render();
+});
+document.querySelectorAll("[data-sel]").forEach(b => b.addEventListener("click", () => {
+  const all = [...ui.clients.keys()];
+  if (b.dataset.sel === "all") ui.selected = new Set(all);
+  if (b.dataset.sel === "none") ui.selected.clear();
+  if (b.dataset.sel === "invert") ui.selected = new Set(all.filter(id => !ui.selected.has(id)));
+  if (b.dataset.sel === "errors") ui.selected = new Set(all.filter(id => ui.clients.get(id).state === "Error"));
+  render();
+}));
+$("#summary").addEventListener("click", e => {
+  const chip = e.target.closest(".chip"); if (!chip) return;
+  const s = chip.dataset.state;
+  ui.selected = new Set([...ui.clients.values()].filter(c => s === "*" || c.state === s).map(c => c.id)); render();
+});
+$("#groupSelect").addEventListener("change", e => {
+  const g = e.target.value; if (!g) return;
+  ui.selected = new Set([...ui.clients.values()].filter(c => (c.groups||[]).includes(g)).map(c => c.id));
+  e.target.value = ""; render();
+});
+$("#saveGroup").addEventListener("click", async () => {
+  const name = $("#newGroup").value.trim(); if (!name || !ui.selected.size) return toast("Enter a name and select clients first");
+  await api.saveGroup(name, [...ui.selected]); $("#newGroup").value = "";
+  addGroupOption(name); toast(`Group '${name}' saved (${ui.selected.size})`);
+});
+$("#filter").addEventListener("input", render);
+document.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", async () => {
+  const action = b.dataset.act;
+  const request = { action,
+    buildId: $("#buildSelect").value || null,
+    experienceId: $("#expSelect").value || null,
+    launchArgs: $("#launchArgs").value.trim() || null,
+    profile: $("#profileSelect").value || null,
+    team: $("#team").value.trim() || null };
+  const target = { clientIds: [...ui.selected] };
+  if (["Reboot","Stop"].includes(action) && ui.selected.size > 4 && !confirmInline(b)) return;
+  try {
+    const res = await api.command(request, target);
+    toast(`${res.command}: ${res.succeeded}/${res.requested} succeeded`);
+  } catch (err) { toast("Command failed: " + err.message); }
+}));
+// Two-click confirm for destructive bulk actions (no blocking browser dialogs).
+function confirmInline(b) {
+  if (b.dataset.armed) { delete b.dataset.armed; b.textContent = b.dataset.orig; return true; }
+  b.dataset.orig = b.textContent; b.dataset.armed = "1"; b.textContent = `Confirm (${ui.selected.size})`;
+  setTimeout(() => { if (b.dataset.armed) { delete b.dataset.armed; b.textContent = b.dataset.orig; } }, 3000);
+  return false;
+}
+function addGroupOption(g) {
+  const sel = $("#groupSelect"); if ([...sel.options].some(o => o.value === g)) return;
+  const o = document.createElement("option"); o.value = g; o.textContent = g; sel.appendChild(o);
+}
+
+/* ---------------- boot ---------------- */
+let api = liveApi;
+(async function boot() {
+  let meta;
+  try { if (location.protocol === "file:") throw new Error("no server"); meta = await liveApi.meta(); }
+  catch { api = makeDemoApi(); meta = await api.meta(); }
+  ui.meta = meta;
+  $("#mode").textContent = meta.mode === "Demo" ? "Demo — no server" : meta.mode;
+  if (meta.mode !== "Live") $("#mode").classList.add("demo");
+
+  $("#expSelect").innerHTML = meta.experiences.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("");
+  $("#profileSelect").innerHTML = meta.profiles.map(p => `<option>${esc(p)}</option>`).join("");
+  Object.keys(meta.groups || {}).forEach(addGroupOption);
+  try {
+    const b = await api.builds();
+    $("#buildSelect").innerHTML = (b.builds || []).filter((x, i, a) => a.findIndex(y => y.id === x.id) === i)
+      .map(x => `<option value="${esc(x.id)}">${esc(x.id)} (${esc(x.version)})</option>`).join("") || `<option value="">No builds</option>`;
+  } catch { $("#buildSelect").innerHTML = `<option value="">Builds unavailable</option>`; }
+
+  $("#workflows").innerHTML = meta.workflows.map(w =>
+    `<button class="btn" data-wf="${esc(w.name)}"><b>${esc(w.name)}</b><small>${esc(w.description || (w.steps||[]).join(" → "))}</small></button>`).join("");
+  document.querySelectorAll("[data-wf]").forEach(b => b.addEventListener("click", async () => {
+    try { ui.run = await api.runWorkflow(b.dataset.wf, { clientIds: [...ui.selected] }); renderRun(); }
+    catch (err) { toast("Workflow failed to start: " + err.message); }
+  }));
+
+  for (const c of await api.clients()) ui.clients.set(c.id, c);
+  render();
+
+  api.subscribe(evt => {
+    if (evt.kind === "client" && evt.data) { ui.clients.set(evt.data.id, evt.data); scheduleRender(); }
+    if (evt.kind === "workflow" && evt.data && (!ui.run || ui.run.runId === evt.data.runId)) { ui.run = evt.data; renderRun(); }
+    log(evt);
+  }, on => { $("#connDot").classList.toggle("on", on); $("#connText").textContent = on ? (meta.mode === "Demo" ? "simulated" : "live") : "reconnecting"; });
+})();
+</script>
+</body>
+</html>

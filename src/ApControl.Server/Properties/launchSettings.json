@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "Simulated": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:5080",
+      "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development", "ApControl__Mode": "Simulated" }
+    },
+    "Live": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:5080",
+      "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Production", "ApControl__Mode": "Live" }
+    }
+  }
+}

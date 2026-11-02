@@ -1,0 +1,31 @@
+# .NET build output
+bin/
+obj/
+publish/
+artifacts/
+TestResults/
+*.trx
+coverage*/
+
+# IDEs
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Local-only config (machine-specific devkit inventory, API keys, etc.)
+appsettings.Local.json
+appsettings.*.Local.json
+*.local.json
+
+# Runtime logs / captures
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

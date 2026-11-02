@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ApControl.Server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApControl.Core\ApControl.Core.csproj" />
+    <ProjectReference Include="..\ApControl.Drivers\ApControl.Drivers.csproj" />
+  </ItemGroup>
+
+</Project>
